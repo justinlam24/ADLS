@@ -24,7 +24,7 @@ The figure below shows the **cumulative best** evaluation accuracy during the Op
 - x-axis: trial index  
 - y-axis: best accuracy observed up to that trial
 
-![Task 1 cumulative max accuracy](task1_cummax_accuracy.png)
+![Task 1 cumulative max accuracy](https://github.com/justinlam24/ADLS/blob/main/figures/lab3_fig1.png)
 
 **Interpretation**: The curve is a staircase (typical for “best-so-far” plots). Improvements occur when a trial discovers a better per-layer width / fractional-width allocation.
 
@@ -58,7 +58,7 @@ The following plot compares precision families by running **separate Optuna stud
 - x-axis: number of trials (per precision)  
 - y-axis: best accuracy observed so far (per precision)
 
-![Task 2 cumulative max accuracy per precision](task2_cummax_accuracy_per_precision.png)
+![Task 2 cumulative max accuracy per precision](https://github.com/justinlam24/ADLS/blob/main/figures/lab3_fig2.png)
 
 **Interpretation**:
 
