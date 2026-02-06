@@ -8,11 +8,9 @@ Lastly, it defines the interface specifications for parameters like weights and 
 
 #### **How Hardware Metadata Differs from Software Metadata**
 
-Software metadata focuses on characteristics needed for software execution and optimization, such as computing FLOPs, memory access patterns, parameter counts, and computational complexity for profiling and optimization. 
+Software metadata focuses on characteristics needed for software execution and optimization, such as floating-point opeations per second, memory access patterns, parameter counts, and computational complexity for profiling and optimization. In contrast, hardware metadata is concerned with the physical implementation of the neural network in silicon or FPGA fabric. It specifies concrete details like the exact bit widths for fixed-point arithmetic, how many parallel processing units to instantiate, which hardware blocks to use, what memory interfaces are needed, and how modules connect via wires and handshaking signals. Overall software metadata can be more abstract and focused on algorithmic properties, while hardware metadata must be completely concrete and implementation-specific. 
 
-In contrast, hardware metadata is concerned with the physical implementation of the neural network in silicon or FPGA fabric. It specifies concrete details like the exact bit widths for fixed-point arithmetic, how many parallel processing units to instantiate, which hardware blocks to use, what memory interfaces are needed, and how modules connect via wires and handshaking signals. It answers questions like "What SystemVerilog module should implement this layer?" and "How many bits are in each data path?"
 
-A key difference is that software metadata can be more abstract and focused on algorithmic properties, while hardware metadata must be completely concrete and implementation-specific. For example, software metadata might note that a layer uses "float32" precision, while hardware metadata must specify exact fixed-point representations like `[8, 3]` meaning 8 total bits with 3 fractional bits. Software metadata might describe a layer's operation mathematically, while hardware metadata must specify the exact RTL module name (`fixed_linear`, `fixed_leaky_relu`, etc.) and all its instantiation parameters.
 
 ### **Task 2: top.sv Analysis**
 
@@ -30,6 +28,8 @@ Third is the `fixed_relu` module, which implements the ReLU activation function,
 
 This design creates a streaming datapath where input tensors flow from left to right: **data_in_0 → fc1 (Linear) → leaky_relu → data_out_0**. The valid-ready handshaking ensures that data only moves forward when all stages are ready to accept it, preventing data loss and allowing the pipeline to handle varying input rates gracefully.
 
+
+
 ### **Task 3: Simulation Results**
 From the notebook output, the original ReLU-based simulation showed:
 - **Simulation time**: 280.00 ns (simulated hardware time)
@@ -40,7 +40,35 @@ From the notebook output, the original ReLU-based simulation showed:
 - **Test status**: PASSED
 - **Output values**: First beat `[0, 0, 0, 0]`, Second beat `[0, 6, 1, 0]` (matched expected `[0, 6, 2, 0]` with minor deviation)
 
+Note:
+- **Test time**: Total time for the entire test run = build time + simulation execution time + testbench overhead
+- **Simulation time**: The actual hardware time being simulated (280 ns for both)
+- **Wall clock time**: Real-world time to execute the compiled simulation
+
+![Task 3 output waveform](images/task3_waveform.png)
+
 ### **Extension Task: Random Leaky ReLU (RReLU) Implementation**
+
+#### Implementation
+
+To implement RReLU, the original ReLU activation was replaced with a randomized leaky slope for negative inputs. A pseudo-random slope parameter (alpha) was generated using an 8-bit LFSR and then used to scale negative activiations, while positive activiations pass through unchanged. The LFSR updates once per accepted input cycle (gated by the ready/valid handshake). Since the output tensor length is 8 and the parallelism is 4, the 8 outputs are emitted in two consecutive cycles, each cycle having its own pseudo-random alpha parameter. 
+
+The alpha mapping targets a uniform distribution in the range [0.125, 0.333]. The 4 LSBs were used from the LFSR state, giving 16 possible states. These 4 bits are scaled into the target range using a simple mapping, note that alpha is represented in Q2.6 format (where 0.25 = 8/64 and 0.333 approximates to 21/64):
+
+\[
+\alpha = 8 + \left\lfloor \frac{\text{LFSR}[3:0] \cdot 13}{16} \right\rfloor
+\]
+
+- **Example Computation**: For input = -1 (Q5.3) and alpha = 17 (Q2.6 ≈ 0.266):
+  - Product: -1 × 17 = -17 (Q7.9 format with 9 fractional bits)
+  - Right shift by 6: -17 >>> 6 = -1 (restoring Q5.3 format)
+  - Output: -1 (small negative value preserved)
+ 
+![RReLU output waveform](images/rrelu_waveform.png)
+
+The waveform analysis shows outputs like [-1, -1, -1, -1] in signed decimal, confirming that negative inputs are scaled by the random slope rather than zeroed.
+
+The reason why all the outputs are -1 is because many scaled small negative values cannot be represented exactly and must quantise to the nearest available level (smallest negative level is -0.125 or 0xFF in Q5.3). This introduces small numerical deviations from floating-point behaviour, the resulting error is bounded to within one least significant bit (LSB) and is generally negligible for inference accuracy. This hardware design therefore prioritises deterministic, low-cost arithmetic over bit-exact matching with floating-point RReLU.
 
 #### RReLU Simulation Results
 
@@ -55,50 +83,16 @@ From the RReLU test execution:
 
 #### Build Time and Simulation Performance
 
-The RReLU implementation exhibits significantly increased build/compilation time compared to standard ReLU. This describes the time Verilator takes to translate SystemVerilog RTL into an optimized C++ simulation executable. This is when C++ models are generated for all the hardware operations. For RReLU, this jumped from 24.03s to 262.04s.
-- **Test time**: Total time for the entire test run = build time + simulation execution time + testbench overhead
-- **Simulation time**: The actual hardware time being simulated (280 ns for both)
-- **Wall clock time**: Real-world time to execute the compiled simulation
+The RReLU implementation exhibits significantly increased build/compilation time compared to standard ReLU. This describes the time Verilator takes to translate SystemVerilog RTL into C++ models. This increased time is caused by:
 
-The **build time** is the main bottleneck, caused by:
+1. **Fixed-Point Multiplier Complexity**: The activation layer uses `$signed(alpha) * $signed(data_in_0[i])` in SystemVerilog, requiring Verilator to generate C++ code to model this 8-bit × 8-bit signed multiplication. Although it still defaults to using fixed-point multipliers since the signals are declared as `logic [7:0]` (fixed precision), the multiplier still demands much more complex C++ code than simple comparisons (ReLU), including sign extension logic, partial product generation, product accumulation and overflow detection. 
 
-1. **Fixed-Point Multiplier Complexity**: When you write `$signed(alpha) * $signed(data_in_0[i])` in SystemVerilog, Verilator generates C++ code to model this 8-bit × 8-bit signed multiplication. Yes, it **defaults to using fixed-point multipliers** since our signals are declared as `logic [7:0]` (fixed precision). The multiplier generates significantly more complex C++ code than simple comparisons (ReLU) or even constant multipliers (fixed Leaky ReLU), including:
-   - Sign extension logic
-   - Partial product generation
-   - Product accumulation
-   - Overflow detection
+2. **LFSR Module Instantiation**: The `lfsr_alpha_generator` adds state registers, XOR feedback polynomial logic, and combinational mapping circuits. The LFSR includes clocked sequential logic, which requires more elaborate timing and state update models compared to purely combinational logic.
 
-2. **LFSR Module Instantiation**: The `lfsr_alpha_generator` adds state registers, XOR feedback polynomial logic, and combinational mapping circuits. Verilator must analyze the entire state machine and generate C++ models for all state transitions.
+Despite the increased build time, the simulated hardware time remains identical (280 ns) because RReLU is implemented with single-cycle combinational logic.
 
-3. **Register State Management**: The LFSR includes clocked sequential logic (`always_ff`), requiring Verilator to generate more elaborate timing and state update models compared to purely combinational logic.
+#### Other Accuracy and Quantization Effects
 
-Despite the increased build time, the **simulated hardware time remains identical** (280 ns) because RReLU is implemented with **single-cycle combinational logic**. The alpha value is pre-computed by the LFSR and ready when needed. The multiplication and 6-bit right shift complete within one clock cycle. The longer **wall clock execution time** (290.36s vs 53.23s) reflects the slower C++ simulation executable, not additional hardware cycles.
+In the RReLU, quantisation effects occur from both the alpha representation and the fixed-point multiply/shift. Since alpha is represented using Q2.6, it has a resolution of 1/64 ≈ 0.0156, which is sufficient for the randomization purpose but limits precision compared to floating-point. The LFSR also produces deterministic pseudo-random sequences based on the seed. Different seeds will produce different alpha sequences, but the same seed guarantees reproducibility across runs. 
 
-#### Output Behavior and Random Slope
-
-The RReLU implementation produces **negative outputs with randomized shallow gradients** for negative inputs. Key observations:
-
-- **Uniform Distribution**: The LFSR-based alpha generator produces values in the range [0.125, 0.333] with approximately uniform distribution using the 4 LSBs of an 8-bit LFSR (16 possible states).
-
-- **Alpha in Q2.6 Format**: With 6 fractional bits, alpha values range from 8 to ~20 in integer representation, corresponding to 0.125 to 0.3125 in fixed-point.
-
-- **Example Computation**: For input = -1 (Q5.3) and alpha = 17 (Q2.6 ≈ 0.266):
-  - Product: -1 × 17 = -17 (Q7.9 format with 9 fractional bits)
-  - Right shift by 6: -17 >>> 6 = -1 (restoring Q5.3 format)
-  - Output: -1 (small negative value preserved)
-
-The waveform analysis shows outputs like [-1, -1, -1, -3] in signed decimal (displayed as [255, 255, 255, 253] in unsigned), confirming that negative inputs are scaled by the random slope rather than zeroed.
-
-#### Accuracy and Quantization Effects
-
-The Q2.6 alpha representation introduces several accuracy considerations:
-
-1. **Quantization Granularity**: With 6 fractional bits, alpha has a resolution of 1/64 ≈ 0.0156. This provides 13-14 distinct values in the [0.125, 0.333] range, which is sufficient for the randomization purpose but limits precision compared to floating-point.
-
-2. **Multiplication Precision Loss**: The product of Q5.3 × Q2.6 yields Q7.9 (9 fractional bits). The arithmetic right shift by 6 bits reduces this to Q7.3, but only the lower 8 bits are kept, resulting in potential saturation for large negative values (though unlikely in practice with typical neural network activations).
-
-3. **Flooring vs. Rounding**: The SystemVerilog right shift (>>>) performs **flooring** rather than rounding. For example, -51 >>> 6 = -1 (floors -0.796 → -1), which may differ from PyTorch's RReLU behavior by ±1 LSB.
-
-4. **Randomness Repeatability**: The LFSR produces deterministic pseudo-random sequences based on the seed. Different seeds will produce different alpha sequences, but the same seed guarantees reproducibility across runs.
-
-**Accuracy Impact**: For inference, the quantization effects are generally negligible (1-2 LSBs difference from ideal). However, for training (if hardware-in-the-loop), the lack of rounding and limited alpha precision may cause gradient approximation errors. The hardware implementation prioritizes **area efficiency** and **single-cycle throughput** over bit-exact match with floating-point PyTorch.
+Multiplying Q5.3 inputs with Q2.6 alpha produces a Q7.9 result and becomes Q7.3 after the right shift by 6. Since the right shift in SystemVerilog performs flooring rather than rounding, it may differ from PyTorhc's RReLU behavior by around ±1 LSB. Finally, only the 8 lower bits are kept from Q7.3, resulting in the limitation of large negative numbers. For inference, the quantization effects are generally negligible. However, for training using hardware, the lack of rounding and limited alpha precision may cause gradient approximation errors. 
