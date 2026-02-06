@@ -45,7 +45,7 @@ Note:
 - **Simulation time**: The actual hardware time being simulated (280 ns for both)
 - **Wall clock time**: Real-world time to execute the compiled simulation
 
-![Task 3 output waveform](images/task3_waveform.png)
+![Task 3 output waveform](figures/lab4_task3.png)
 
 ### **Extension Task: Random Leaky ReLU (RReLU) Implementation**
 
@@ -64,7 +64,7 @@ The alpha mapping targets a uniform distribution in the range [0.125, 0.333]. Th
   - Right shift by 6: -17 >>> 6 = -1 (restoring Q5.3 format)
   - Output: -1 (small negative value preserved)
  
-![RReLU output waveform](images/rrelu_waveform.png)
+![RReLU output waveform](figures/lab4_rrelu_waveform.png)
 
 The waveform analysis shows outputs like [-1, -1, -1, -1] in signed decimal, confirming that negative inputs are scaled by the random slope rather than zeroed.
 
