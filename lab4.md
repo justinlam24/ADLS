@@ -55,9 +55,9 @@ To implement RReLU, the original ReLU activation was replaced with a randomized 
 
 The alpha mapping targets a uniform distribution in the range [0.125, 0.333]. The 4 LSBs were used from the LFSR state, giving 16 possible states. These 4 bits are scaled into the target range using a simple mapping, note that alpha is represented in Q2.6 format (where 0.25 = 8/64 and 0.333 approximates to 21/64):
 
-\[
+$$
 \alpha = 8 + \left\lfloor \frac{\text{LFSR}[3:0] \cdot 13}{16} \right\rfloor
-\]
+$$
 
 - **Example Computation**: For input = -1 (Q5.3) and alpha = 17 (Q2.6 ≈ 0.266):
   - Product: -1 × 17 = -17 (Q7.9 format with 9 fractional bits)
