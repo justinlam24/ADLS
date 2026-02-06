@@ -79,7 +79,7 @@ From the RReLU test execution:
 - **Test time**: 324.34 seconds total
 - **Time ratio**: 0.96 ns/s (simulation speed)
 - **Test status**: PASSED
-- **Output values**: First beat `[-1, -1, -1, -3]`, Second beat `[0, 6, 1, 0]` 
+- **Output values**: First beat `[-1, -1, -1, -1]`, Second beat `[0, 6, 1, 0]` 
 
 #### Build Time and Simulation Performance
 
