@@ -64,7 +64,7 @@ $$
   - Right shift by 6: -17 >>> 6 = -1 (restoring Q5.3 format)
   - Output: -1 (small negative value preserved)
  
-![RReLU output waveform](figures/lab4_rrelu_waveform.png)
+![RReLU output waveform](figures/lab4_rrelu.png)
 
 The waveform analysis shows outputs like [-1, -1, -1, -3] in signed decimal, confirming that negative inputs are scaled by the random slope rather than zeroed.
 
