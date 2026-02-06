@@ -66,9 +66,11 @@ $$
  
 ![RReLU output waveform](figures/lab4_rrelu_waveform.png)
 
-The waveform analysis shows outputs like [-1, -1, -1, -1] in signed decimal, confirming that negative inputs are scaled by the random slope rather than zeroed.
+The waveform analysis shows outputs like [-1, -1, -1, -3] in signed decimal, confirming that negative inputs are scaled by the random slope rather than zeroed.
 
-The reason why all the outputs are -1 is because many scaled small negative values cannot be represented exactly and must quantise to the nearest available level (smallest negative level is -0.125 or 0xFF in Q5.3). This introduces small numerical deviations from floating-point behaviour, the resulting error is bounded to within one least significant bit (LSB) and is generally negligible for inference accuracy. This hardware design therefore prioritises deterministic, low-cost arithmetic over bit-exact matching with floating-point RReLU.
+Due to the Q5.3 format, many negative numbers cannot be represented exactly and must quantise to the nearest available level (smallest negative level is -0.125 or 0xFF in Q5.3). This introduces small numerical deviations from floating-point behaviour, the resulting error is bounded to within one least significant bit (LSB) and is generally negligible for inference accuracy. This hardware design therefore prioritises deterministic, low-cost arithmetic over bit-exact matching with floating-point RReLU.
+
+The -3 comes from the fact that after the multiplication and shift, the result is computed by $17 * (-8) = -136$, then $-136/64 = -2.125$, it floors to the larger negative number. 
 
 #### RReLU Simulation Results
 
@@ -79,7 +81,7 @@ From the RReLU test execution:
 - **Test time**: 324.34 seconds total
 - **Time ratio**: 0.96 ns/s (simulation speed)
 - **Test status**: PASSED
-- **Output values**: First beat `[-1, -1, -1, -1]`, Second beat `[0, 6, 1, 0]` 
+- **Output values**: First beat `[-1, -1, -1, -3]`, Second beat `[0, 6, 1, 0]` 
 
 #### Build Time and Simulation Performance
 
