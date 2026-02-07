@@ -80,6 +80,9 @@
     * Too small: loses range.
     * Too large: loses precision.
 
+#### Plot: PTQ vs QAT Accuracy across increasing Fixed Point Widths
+![Lab 1 Task 1](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/Lab 1 Task 1.png)
+
 #### Conclusion:
 QAT is essential for aggressive quantization, while PTQ is sufficient at higher bit-widths. Both methods benefit from careful selection of quantization parameters and mixed precision to further optimize the trade-offs between accuracy and efficiency.
 
