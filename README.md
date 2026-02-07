@@ -38,7 +38,7 @@
  - These passes modify the internal operators to support fixed-point arithmetic or weight masking while remining compatible with standard training loops.
     - An example of this is the HuggingFace `Trainer`
 
-## Lab 1 Implementation Task 1
+### Lab 1 Implementation Task 1
 
 #### Summary of Results:
 
@@ -83,7 +83,7 @@
 
 QAT is essential for aggresive quantization, while PTQ is sufficient at higher bit-widths. Both methods benefit from careful selection of quantization parameters and mixed-precisions to further optimize the trade-offs between accuracy and efficiency.
 
-## Lab 1 Implementation Task 2
+### Lab 1 Implementation Task 2
 
 #### Summary of Results:
 
@@ -162,5 +162,117 @@ L1-Norm Pruning is more effective than Random Pruning, especially at high sparsi
 * Mase provides a `CompressionPipeline` that can be called within the Optuna objective function.
 * This allows for the evaluation of a model's final "compressed" accuracy immediately after it has been sampled and trained.
 * It supports exporting the best-found architecture as a checkpoint for future deployment.
+
+![Task 1 cumulative max accuracy](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/Lab2_Fig1.png)
+
+
+
+---
+## Lab 3: Mixed Precision Search
+
+### Objectives
+* **Core Aim**: Use the **Mase** framework to discover optimal **mixed precision** quantization schemes.
+* **Optimization Goal**: Balance model accuracy and hardware efficiency by assigning higher precision only to sensitive network components.
+* **Key Tasks**:
+    * **Granular Exploration**: Allow layer-specific variation in total bit-widths and fractional widths.
+    * **Format Diversity**: Expand search beyond integers to include **Minifloat**, **BlockFP**, **BlockLog**, and **Binary**.
+    * **Automated NAS**: Use **Optuna** to automate efficient bit-width allocation across all layers.
+    * **Analysis**: Evaluate and plot how precision formats impact accuracy throughout trial iterations.
+
+---
+
+### Background Information
+
+#### Mixed Precision Quantization
+* **Definition**: Assigns different numerical bit-widths to individual layers or tensors rather than a uniform global setting.
+* **Sensitivity**: Early layers (raw data processing) are often highly sensitive to noise, whereas deeper layers may tolerate more aggressive compression.
+* **Benefits**: 
+    * **Efficiency**: Reduces computational and memory load.
+    * **Accuracy**: Maintains performance by focusing bits where they matter most.
+
+#### Supported Precision Formats in Mase
+* **LinearInteger**: Standard fixed-point with configurable fractional widths.
+* **Minifloat (IEEE/Denorm)**: Low-bit floating-point for diverse dynamic ranges.
+* **Block Floating Point (BlockFP)**: A block of numbers sharing a single exponent to save space.
+* **Binary/Ternary**: Ultra-low 1 or 2-bit quantization for maximum storage reduction.
+
+#### Optimization with Optuna
+* **Trial-based Search**: Executes multiple trials using samplers like **TPESampler** to test suggested precision configurations.
+* **Objective Function**: Constructs a model, trains briefly on IMDb data, and returns accuracy to guide subsequent trials.
+* **Sensitivity Analysis**: The process automatically identifies layer importance; critical layers receive higher bit-widths to satisfy accuracy constraints.
+
+#### Mase Implementation
+* **Define-by-Run**: Models and their quantization schemes are constructed dynamically during search.
+* **Automation**: Uses `trial.suggest_categorical` to iterate through layer types and precision parameters for every `nn.Linear` module.
+
+---
+
+
+### Lab 3 - Tutorial 6: Mixed-Precision Search (Tasks 1–2)
+
+This note summarizes the two implementation extensions requested on top of **Tutorial 6** (mixed-precision search for `Linear` layers in Mase), and reports the resulting Optuna search behavior using the generated plots.
+
+---
+
+### Task 1 — Per-layer Integer precision (width & fractional width)
+
+#### 1a) Change requested
+
+In the original Tutorial 6 setup, all layers mapped to `LinearInteger` share the *same* width and fractional-width. This is suboptimal because different `Linear` layers can have __different quantization sensitivity__.
+
+**Modification**: For every `torch.nn.Linear` that is replaced with `LinearInteger`, sample **per-layer**:
+
+- width ∈ **{8, 16, 32}**
+- fractional width ∈ **{2, 4, 8}**
+
+These are exposed as **additional Optuna hyperparameters** *per layer*, so the sampler can choose independently per module.
+
+#### 1b) Result plot: cumulative max accuracy
+
+The figure below shows the **cumulative best** evaluation accuracy during the Optuna run:
+
+- x-axis: trial index  
+- y-axis: best accuracy observed up to that trial
+
+![Task 1 cumulative max accuracy](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/lab3_fig1.png)
+
+**Interpretation**: The curve is a staircase (typical for “best-so-far” plots). Improvements occur when a trial discovers a better per-layer width / fractional-width allocation.
+
+**Why the curve looks like this**: This is a cumulative-best (“best so far”) plot, so it increases only when a trial finds a better configuration. Most trials reuse similarly good per-layer fixed-point settings, producing plateaus, and occasional jumps occur when the sampler hits a better match between a layer’s numeric range and its chosen `{width, frac_width}` (reducing saturation/rounding error in the most sensitive layers).
+
+
+---
+
+### Task 2 — Extend search to all supported Linear precisions
+
+#### 2a) Change requested
+
+Tutorial 6 imports multiple precision variants, but only searches between:
+
+- full-precision `torch.nn.Linear`
+- `LinearInteger`
+
+**Modification**: Extend the search to include all supported Mase linear precisions, e.g.
+
+- `LinearMinifloatDenorm`, `LinearMinifloatIEEE`
+- `LinearBlockFP`, `LinearBlockLog`
+- `LinearLog`
+- `LinearBinary`, `LinearBinaryScaling`, `LinearBinaryResidualSign`
+
+This required updating the model constructor to pass the **expected `config` fields** for each precision type (since each module family has different required config keys).
+
+#### 2b) Result plot: cumulative max accuracy per precision
+
+The following plot compares precision families by running **separate Optuna studies** per precision type and plotting:
+
+- x-axis: number of trials (per precision)  
+- y-axis: best accuracy observed so far (per precision)
+
+![Task 2 cumulative max accuracy per precision](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/lab3_fig2.png)
+
+**Interpretation**:
+
+- The plot provides a direct comparison of which precision family reaches higher accuracy within the same trial budget.
+- In this run, the best-performing group clusters near the top curve band, while some precision types lag (notably the pure __binary and logarithmic__ variant in this configuration).
 
 ---
