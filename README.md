@@ -163,7 +163,9 @@ L1-Norm Pruning is more effective than Random Pruning, especially at high sparsi
 * This allows for the evaluation of a model's final "compressed" accuracy immediately after it has been sampled and trained.
 * It supports exporting the best-found architecture as a checkpoint for future deployment.
 
-![Task 1 cumulative max accuracy](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/Lab2_Fig1.png)
+![Lab 2 Task 1](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/Lab2_Fig1.png)
+
+![Lab 2 Task 2](https://raw.githubusercontent.com/justinlam24/ADLS/main/figures/Lab2_Fig2.png)
 
 
 
